@@ -1,0 +1,10 @@
+{
+  "name": "tutorias-poo-pruebas",
+  "private": true,
+  "scripts": {
+    "test:web": "node tests/web/navegador.cjs"
+  },
+  "devDependencies": {
+    "playwright": "1.62.1"
+  }
+}

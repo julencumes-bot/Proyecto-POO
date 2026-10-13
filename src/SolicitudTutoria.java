@@ -32,6 +32,11 @@ public class SolicitudTutoria {
     public Horario getHorario() { return horario; }
     public EstadoSolicitud getEstado() { return estado; }
     public double getPrecio() { return precio; }
+    // Exclusivo del repositorio: conserva el precio pactado al recuperar la reserva.
+    void restaurarPrecio(double precioGuardado) {
+        Validacion.noNegativo(precioGuardado, "Precio guardado");
+        precio = precioGuardado;
+    }
     public void confirmar() {
         if (estado != EstadoSolicitud.PENDIENTE) {
             throw new IllegalStateException("Solo se puede aceptar una solicitud pendiente.");

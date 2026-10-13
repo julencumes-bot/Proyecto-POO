@@ -1,0 +1,12 @@
+bin/
+tmp/
+*.class
+data/
+.runtime/
+lib/*.jar
+*.log
+*.pid
+.env
+tests/web/resultados/
+node_modules/
+entrega/*.zip
