@@ -1,0 +1,100 @@
+/* Ejecutar con Node y Playwright. Base temporal y servidor propios; no usa los datos de la app. */
+const {chromium}=require('playwright');
+const {spawn,spawnSync}=require('node:child_process');
+const fs=require('node:fs/promises');
+const path=require('node:path');
+const os=require('node:os');
+let checks=0;
+function check(value,message){if(!value)throw new Error(message);checks++;}
+async function main(){
+ const tmp=await fs.mkdtemp(path.join(os.tmpdir(),'tutorias-browser-'));
+ const output=path.resolve('tests/web/resultados');await fs.mkdir(output,{recursive:true});
+ const cp=process.platform==='win32'?'bin;lib/*':'bin:lib/*';
+ // Usar el ejecutable real evita dejar un servidor hijo detrás del lanzador de Windows.
+ const settings=spawnSync('java',['-XshowSettings:properties','-version'],{windowsHide:true,encoding:'utf8'});
+ const javaHome=settings.stderr?.match(/java.home\s*=\s*(.+)/)?.[1].trim();
+ if(!javaHome)throw new Error('No se encontró el JDK. Comprueba java y javac en PATH.');
+ const java=path.join(javaHome,'bin',process.platform==='win32'?'java.exe':'java');
+ const server=spawn(java,['-cp',cp,'WebMain'],{windowsHide:true,stdio:['ignore','pipe','pipe'],env:{...process.env,PORT:'0',DEMO_DATA:'true',DB_URL:'jdbc:h2:'+path.join(tmp,'db')+';MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE',DB_USER:'sa',DB_PASSWORD:''}});
+ let browser;let errors=[];
+ try{
+ const url=await new Promise((resolve,reject)=>{const timer=setTimeout(()=>reject(new Error('Servidor no inició')),20000);server.stdout.on('data',data=>{const m=data.toString().match(/http:\/\/127\.0\.0\.1:\d+/);if(m){clearTimeout(timer);resolve(m[0]);}});server.stderr.on('data',d=>process.stderr.write(d));server.on('exit',code=>{clearTimeout(timer);reject(new Error('Servidor terminó: '+code));});});
+ browser=await chromium.launch({headless:true,...(process.env.BROWSER_CHANNEL?{channel:process.env.BROWSER_CHANNEL}:{})});
+ async function login(name){const ctx=await browser.newContext({viewport:{width:1440,height:1000}});ctx.setDefaultTimeout(15000);const page=await ctx.newPage();page.on('pageerror',e=>errors.push(e.message));await page.goto(url);await page.getByRole('button',{name,exact:true}).click();await page.getByRole('button',{name:'Entrar a mi espacio'}).click();await page.locator('.hero').waitFor();return page;}
+ async function nav(p,hash){await p.evaluate(h=>{location.hash=h},hash);await p.waitForTimeout(250);}
+ async function saved(p){await p.locator('#aviso').filter({hasText:/guardado|enviada|actualizada/}).waitFor();await p.waitForTimeout(250);}
+ const landing=await browser.newPage({viewport:{width:1440,height:1000}});await landing.goto(url);await landing.locator('.login-card').waitFor();await landing.screenshot({path:path.join(output,'01-acceso.png'),fullPage:true});
+ const ana=await login('Ana · estudiante');await ana.screenshot({path:path.join(output,'02-estudiante.png'),fullPage:true});
+ await nav(ana,'buscar');await ana.getByLabel('Nombre o código del curso').fill('Programación');check(await ana.locator('#lista-cursos .card').count()===1,'Filtro de cursos');
+ await ana.getByRole('link',{name:'Ver tutores y horarios →',exact:true}).click();await ana.getByLabel('2. Elige un tutor').selectOption('T001');await ana.getByLabel('3. Elige un horario').selectOption({index:1});await ana.getByLabel('4. ¿Qué tema quieres trabajar?').fill('Herencia <img src=x onerror=alert(1)>');
+ check((await ana.locator('#resumen-reserva').innerText()).includes('Q 0.00')||(await ana.locator('#resumen-reserva').innerText()).includes('Q0.00'),'Precio antes de confirmar');
+ await ana.screenshot({path:path.join(output,'03-reserva.png'),fullPage:true});await ana.getByRole('button',{name:'Confirmar solicitud',exact:true}).click();await ana.locator('.badge.pendiente').waitFor();checks++;
+ check(await ana.locator('article img').count()===0,'Tema se muestra escapado y no ejecuta HTML');
+ await ana.getByText('Agregar una pregunta',{exact:true}).click();await ana.getByLabel('Tu duda sobre la tutoría').fill('¿Cómo se llama al constructor de la clase padre?');await ana.getByRole('button',{name:'Guardar pregunta',exact:true}).click();await saved(ana);
+ const maria=await login('María · tutor');await nav(maria,'solicitudes');await maria.getByRole('button',{name:'Aceptar tutoría',exact:true}).click();await saved(maria);await maria.getByText('Preguntas de esta tutoría (1)',{exact:true}).click();check((await maria.locator('.question').innerText()).includes('clase padre'),'Tutor lee pregunta');
+ await nav(maria,'sesiones');await maria.getByRole('link',{name:'Registrar seguimiento',exact:true}).click();await maria.getByLabel('¿Qué temas trabajaron?').fill('Herencia, constructores y super');await maria.getByLabel('Notas y observaciones para el estudiante').fill('Completó los ejercicios con autonomía.');await maria.getByLabel('Tema recomendado para la próxima tutoría (opcional)').fill('Polimorfismo');await maria.getByRole('button',{name:'Guardar y finalizar sesión',exact:true}).click();await maria.locator('.badge.finalizada').waitFor();checks++;
+ await nav(maria,'compensacion');check((await maria.locator('.stats').innerText()).includes('1\nHoras beca'),'Compensación de beca visible');await maria.screenshot({path:path.join(output,'04-compensacion.png'),fullPage:true});
+ await nav(maria,'disponibilidad');check((await maria.locator('.detail').innerText()).includes('Programación'),'Cursos del tutor');await maria.getByLabel('Fecha',{exact:true}).fill('2026-12-15');await maria.getByLabel('Hora de inicio').fill('10:00');await maria.getByLabel('Hora de finalización').fill('11:00');await maria.getByRole('button',{name:'Publicar horario'}).click();await saved(maria);checks++;
+ await nav(ana,'historial');await ana.getByText('Polimorfismo',{exact:true}).waitFor();check((await ana.locator('.detail').innerText()).includes('autonomía'),'Historial, temas, notas y próximo tema');
+ const coor=await login('Coordinación');await nav(coor,'progreso?estudiante=E001');check((await coor.locator('#lista-progreso').innerText()).includes('Polimorfismo'),'Progreso de estudiante');await coor.screenshot({path:path.join(output,'05-coordinacion.png'),fullPage:true});
+ await nav(coor,'demanda');check((await coor.locator('.pretext').innerText()).toLowerCase().includes('herencia'),'Demanda por tema');await nav(coor,'estudiantes');await coor.getByLabel('Con tutorías').check();check(await coor.locator('tbody tr').count()===1,'Estudiantes atendidos');
+ await nav(coor,'cursos');await coor.getByLabel('Código del curso').fill('WEB101');await coor.getByLabel('Nombre del curso').fill('Diseño web');await coor.getByRole('button',{name:'Guardar curso'}).click();await saved(coor);check((await coor.locator('main').innerText()).includes('Diseño web'),'Registrar curso');
+ await nav(coor,'tutores');await coor.getByLabel('Tutor',{exact:true}).selectOption('T001');await coor.getByLabel('Curso',{exact:true}).selectOption('WEB101');await coor.getByRole('button',{name:'Aprobar tutor',exact:true}).click();await saved(coor);check((await coor.locator('.grid').last().innerText()).includes('Diseño web'),'Aprobar tutor e información');
+ // Tutor remunerado y cancelación desde navegador.
+ const luis=await login('Luis · último año');await nav(luis,'reservar?curso=MM101');await luis.getByLabel('2. Elige un tutor').selectOption('T002');await luis.getByLabel('3. Elige un horario').selectOption({index:1});await luis.getByLabel('4. ¿Qué tema quieres trabajar?').fill('Integrales');check((await luis.locator('#resumen-reserva').innerText()).includes('60.00'),'Precio pagado');await luis.getByRole('button',{name:'Confirmar solicitud',exact:true}).click();await luis.locator('.badge.pendiente').waitFor();
+ const diego=await login('Diego · tutor');await nav(diego,'solicitudes');await diego.getByRole('button',{name:'Aceptar tutoría',exact:true}).click();await saved(diego);await diego.getByRole('link',{name:'Registrar seguimiento',exact:true}).click();await diego.getByLabel('¿Qué temas trabajaron?').fill('Integración');await diego.getByLabel('Notas y observaciones para el estudiante').fill('Avance satisfactorio');await diego.getByRole('button',{name:'Guardar y finalizar sesión',exact:true}).click();await diego.locator('.badge.finalizada').waitFor();await nav(diego,'compensacion');check((await diego.locator('.stats').innerText()).includes('60.00'),'Pago y remuneración visibles');
+ await nav(luis,'reservar?curso=CC5001');await luis.getByRole('button',{name:'Ayúdame a encontrar un tutor'}).click();check((await luis.locator('#recomendacion').innerText()).includes('recomendamos'),'Apoyo alternativo');await luis.getByLabel('2. Elige un tutor').selectOption('P001');await luis.getByLabel('3. Elige un horario').selectOption({index:1});await luis.getByLabel('4. ¿Qué tema quieres trabajar?').fill('Grafos');await luis.getByRole('button',{name:'Confirmar solicitud',exact:true}).click();await luis.locator('.badge.pendiente').waitFor();
+ await nav(coor,'profesor');await coor.getByRole('button',{name:'Aceptar tutoría',exact:true}).click();await saved(coor);await coor.getByRole('link',{name:'Registrar seguimiento',exact:true}).click();await coor.getByLabel('¿Qué temas trabajaron?').fill('Grafos dirigidos');await coor.getByLabel('Notas y observaciones para el estudiante').fill('Sesión del profesor finalizada');await coor.getByRole('button',{name:'Guardar y finalizar sesión',exact:true}).click();await saved(coor);await nav(coor,'historial');check((await coor.locator('main').innerText()).includes('Sesión del profesor finalizada'),'Profesor imparte, registra temas y notas');
+ await nav(ana,'reservar?curso=CC2006');await ana.getByLabel('2. Elige un tutor').selectOption('T001');await ana.getByLabel('3. Elige un horario').selectOption({index:1});await ana.getByLabel('4. ¿Qué tema quieres trabajar?').fill('Prueba de cancelación');await ana.getByRole('button',{name:'Confirmar solicitud',exact:true}).click();await ana.locator('.badge.pendiente').waitFor();await ana.getByRole('button',{name:'Cancelar',exact:true}).click();await ana.getByRole('button',{name:'Conservar tutoría',exact:true}).click();check(await ana.locator('.badge.pendiente').count()===1,'Cancelar requiere confirmación');await ana.getByRole('button',{name:'Cancelar',exact:true}).click();await ana.getByRole('button',{name:'Sí, cancelar tutoría',exact:true}).click();await ana.locator('.badge.cancelada').waitFor();checks++;
+ // Dos estudiantes vieron el mismo horario: el segundo conserva su tema y recibe oferta actualizada.
+ await nav(ana,'reservar?curso=CC2006');await ana.getByLabel('2. Elige un tutor').selectOption('T001');await ana.getByLabel('3. Elige un horario').selectOption({index:1});
+ const horarioCompetido=await ana.getByLabel('3. Elige un horario').inputValue();await ana.getByLabel('4. ¿Qué tema quieres trabajar?').fill('Mi tema debe conservarse');
+ await nav(luis,'reservar?curso=CC2006');await luis.getByLabel('2. Elige un tutor').selectOption('T001');await luis.getByLabel('3. Elige un horario').selectOption(horarioCompetido);await luis.getByLabel('4. ¿Qué tema quieres trabajar?').fill('Reserva concurrente');await luis.getByRole('button',{name:'Confirmar solicitud',exact:true}).click();await luis.locator('.badge.pendiente').waitFor();
+ await ana.getByRole('button',{name:'Confirmar solicitud',exact:true}).click();await ana.locator('.form-error').filter({hasText:/ocupado/}).waitFor();
+ check(await ana.getByLabel('4. ¿Qué tema quieres trabajar?').inputValue()==='Mi tema debe conservarse','Conflicto conserva el tema');
+ check(!(await ana.getByLabel('3. Elige un horario').locator('option').evaluateAll(els=>els.map(el=>el.value))).includes(horarioCompetido),'Conflicto actualiza horarios sin recargar');
+ // Interfaz pequeña, sin desbordamiento, y etiquetas de formularios.
+ await ana.setViewportSize({width:390,height:844});await nav(ana,'inicio');await ana.screenshot({path:path.join(output,'06-movil.png'),fullPage:true});check(await ana.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),'No hay desbordamiento horizontal en celular');
+ await nav(ana,'reservar?curso=CC2006');check(await ana.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),'Reserva usable en celular');await ana.screenshot({path:path.join(output,'07-reserva-movil.png'),fullPage:true});
+ check(await ana.locator('input:not([type=hidden]),select,textarea').evaluateAll(els=>els.every(el=>el.labels?.length>0)),'Campos con etiquetas accesibles');
+ // Registro público: conserva el acceso y las cinco cuentas de ejemplo.
+ const registro=await browser.newPage({viewport:{width:1440,height:1100}});
+ registro.on('pageerror',e=>errors.push(e.message));await registro.goto(url);await registro.locator('.demo-users').waitFor();
+ const ejemplos=await registro.locator('.demo-users').innerHTML();
+ check(await registro.locator('[data-demo]').count()===5,'Se conservan las cinco cuentas de ejemplo');
+ check(await registro.locator('#registro-estudiante').getAttribute('open')===null,'El registro inicia plegado');
+ await registro.locator('#registro-estudiante summary').click();
+ const formulario=registro.locator('#registro-form');
+ check(await formulario.locator('input').evaluateAll(els=>els.every(el=>el.labels?.length>0)),'Registro tiene etiquetas accesibles');
+ check(await registro.locator('[id]').evaluateAll(els=>new Set(els.map(el=>el.id)).size===els.length),'Los formularios de acceso y registro no repiten identificadores');
+ await formulario.getByLabel('Nombre completo').fill('Sofía Registro');await formulario.getByLabel('Carné',{exact:true}).fill('E500');
+ await formulario.getByLabel('Año de carrera').fill('3');await formulario.getByLabel('Correo electrónico').fill('sofia@example.com');
+ await formulario.getByLabel('Contraseña para tu cuenta').fill('MiRegistro2026!');await formulario.getByLabel('Confirmar contraseña').fill('NoCoincide2026!');
+ await formulario.getByRole('button',{name:'Crear mi cuenta de estudiante'}).click();await formulario.locator('.form-error').filter({hasText:'Las contraseñas no coinciden.'}).waitFor();
+ check(await formulario.getByLabel('Carné',{exact:true}).inputValue()==='E500','Error conserva los datos del registro');
+ await formulario.getByLabel('Confirmar contraseña').fill('MiRegistro2026!');
+ await registro.screenshot({path:path.join(output,'08-registro-escritorio.png'),fullPage:true});
+ await formulario.getByRole('button',{name:'Crear mi cuenta de estudiante'}).click();await registro.locator('#aviso').filter({hasText:'Cuenta creada correctamente.'}).waitFor();
+ check(await registro.locator('#carnet').inputValue()==='E500' && await registro.locator('#rol').inputValue()==='estudiante','Registro prepara el acceso de estudiante');
+ check(await registro.locator('.demo-users').innerHTML()===ejemplos,'La cuenta nueva no se agrega a los ejemplos');
+ await registro.locator('#clave').fill('MiRegistro2026!');await registro.getByRole('button',{name:'Entrar a mi espacio'}).click();await registro.locator('.hero').waitFor();
+ check((await registro.locator('.identity').innerText()).includes('Sofía Registro'),'Estudiante registrado entra a su espacio');
+ await registro.getByRole('button',{name:'Salir',exact:true}).click();await registro.locator('.login-card').waitFor();await registro.reload();await registro.locator('.demo-users').waitFor();
+ check(await registro.locator('.demo-users').innerHTML()===ejemplos,'Salir y recargar mantiene solo los ejemplos originales');
+ await registro.setViewportSize({width:390,height:844});await registro.locator('#registro-estudiante summary').click();
+ await formulario.getByLabel('Nombre completo').fill('Intento duplicado');await formulario.getByLabel('Carné',{exact:true}).fill('E500');
+ await formulario.getByLabel('Correo electrónico').fill('duplicado@example.com');await formulario.getByLabel('Contraseña para tu cuenta').fill('OtraClave2026!');await formulario.getByLabel('Confirmar contraseña').fill('OtraClave2026!');
+ await formulario.getByRole('button',{name:'Crear mi cuenta de estudiante'}).click();await formulario.locator('.form-error').filter({hasText:/Ya existe/}).waitFor();
+ check(await formulario.getByLabel('Carné',{exact:true}).inputValue()==='E500','Carné duplicado muestra error y conserva el formulario');
+ check(await registro.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),'Registro usable en celular sin desbordamiento');
+ await registro.screenshot({path:path.join(output,'09-registro-movil.png'),fullPage:true});
+ await formulario.getByLabel('Nombre completo').fill('Registro móvil');await formulario.getByLabel('Carné',{exact:true}).fill('E501');
+ await formulario.getByRole('button',{name:'Crear mi cuenta de estudiante'}).click();await registro.locator('#aviso').filter({hasText:'Cuenta creada correctamente.'}).waitFor();
+ check(await registro.locator('.demo-users').innerHTML()===ejemplos,'Registro móvil tampoco altera las cuentas de ejemplo');
+ await nav(coor,'estudiantes');await coor.getByText('Sofía Registro',{exact:true}).waitFor();
+ check((await coor.locator('#lista-estudiantes').innerText()).includes('Registro móvil'),'Coordinación consulta las altas autónomas');
+ check(errors.length===0,'Sin errores de JavaScript: '+errors.join('; '));
+ const report={checks,errors,ui:'RF01–RF33 recorridos en navegador; apoyo y administración incluidos',screenshots:output};await fs.writeFile(path.join(output,'resultado.json'),JSON.stringify(report,null,2));console.log(JSON.stringify(report,null,2));
+ }finally{try{if(browser)await browser.close();}finally{server.kill();server.stdout.destroy();server.stderr.destroy();server.unref();}}
+}
+main().catch(e=>{console.error(e);process.exitCode=1;});
