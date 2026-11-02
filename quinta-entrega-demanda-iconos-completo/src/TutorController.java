@@ -4,7 +4,11 @@ public class TutorController {
     private SistemaTutorias sistema;
 
     public TutorController(SistemaTutorias sistema) { this.sistema = sistema; }
-    public ArrayList<Curso> consultarCursosAsignados(Tutor tutor) { return tutor.getCursosAsignados(); }
+    public ArrayList<Curso> consultarCursosAsignados(Tutor tutor) {
+        ArrayList<Curso> cursos = tutor.getCursosAsignados();
+        cursos.removeIf(c -> !c.isActivo());
+        return cursos;
+    }
     public ArrayList<SolicitudTutoria> consultarSolicitudes(Tutor tutor) {
         ArrayList<SolicitudTutoria> resultado = new ArrayList<SolicitudTutoria>();
         for (SolicitudTutoria solicitud : sistema.getSolicitudes()) {
@@ -14,7 +18,8 @@ public class TutorController {
     }
     public SesionTutoria aceptarTutoria(Tutor tutor, SolicitudTutoria solicitud) {
         verificarSolicitud(tutor, solicitud);
-        if (!tutor.isAprobado() || !tutor.getCursosAsignados().contains(solicitud.getCurso())) {
+        if (!tutor.isAprobado() || !solicitud.getCurso().isActivo()
+                || !tutor.getCursosAsignados().contains(solicitud.getCurso())) {
             throw new IllegalArgumentException("El tutor no esta aprobado para este curso.");
         }
         solicitud.confirmar();
@@ -57,14 +62,14 @@ public class TutorController {
         return resultado;
     }
     public void agregarHorario(Tutor tutor, String fecha, String inicio, String fin) {
-        if (!sistema.getTutores().contains(tutor)) {
+        if (!sistema.getTutores().contains(tutor) || !tutor.isActivo()) {
             throw new IllegalArgumentException("Tutor no registrado.");
         }
         tutor.agregarHorario(new Horario(fecha, inicio, fin));
     }
     private void verificarSolicitud(Tutor tutor, SolicitudTutoria solicitud) {
         if (!sistema.getTutores().contains(tutor) || !sistema.getSolicitudes().contains(solicitud)
-                || solicitud.getTutor() != tutor) {
+                || !tutor.isActivo() || solicitud.getTutor() != tutor) {
             throw new IllegalArgumentException("La solicitud no pertenece al tutor.");
         }
     }

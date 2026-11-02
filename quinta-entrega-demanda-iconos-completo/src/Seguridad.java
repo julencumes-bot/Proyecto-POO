@@ -37,6 +37,12 @@ public class Seguridad {
     }
     public Identidad autenticar(String rol,String carnet,String clave) throws SQLException {
         if(clave==null || clave.length()>128) { return null; }
+        if("tutor".equals(rol)) {
+            try(Connection c=db.conectar();var p=c.prepareStatement("SELECT activo FROM tutores WHERE carnet=?")) {
+                p.setString(1,carnet);
+                try(var r=p.executeQuery()) { if(!r.next() || !r.getBoolean("activo")) { return null; } }
+            }
+        }
         try(Connection c=db.conectar();var p=c.prepareStatement("SELECT salt,hash FROM cuentas WHERE rol=? AND carnet=?")) {
             p.setString(1,rol);p.setString(2,carnet);
             try(var r=p.executeQuery()) {

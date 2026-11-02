@@ -6,6 +6,7 @@ public class Curso {
     private String codigo;
     private String nombre;
     private final String icono;
+    private boolean activo = true;
     private ArrayList<Tutor> tutoresDisponibles;
     private static final Set<String> ICONOS = Set.of(
             "book", "code", "math", "nodes", "atom", "flask", "leaf",
@@ -34,6 +35,9 @@ public class Curso {
     public String getCodigo() { return codigo; }
     public String getNombre() { return nombre; }
     public String getIcono() { return icono; }
+    public boolean isActivo() { return activo; }
+    // Retirar de la oferta conserva las referencias usadas por el historial.
+    void retirar() { activo = false; }
     public ArrayList<Tutor> getTutoresDisponibles() {
         return new ArrayList<Tutor>(tutoresDisponibles);
     }

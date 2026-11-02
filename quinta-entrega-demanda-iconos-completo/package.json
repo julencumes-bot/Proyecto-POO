@@ -2,7 +2,7 @@
   "name": "tutorias-poo-pruebas",
   "private": true,
   "scripts": {
-    "test:ui": "node --test tests/web/coordinacion.cjs",
+    "test:ui": "node --test tests/web/coordinacion.cjs tests/web/gestion.cjs",
     "test:web": "node tests/web/navegador.cjs"
   },
   "devDependencies": {

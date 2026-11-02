@@ -10,3 +10,5 @@ if ($LASTEXITCODE -ne 0) { throw 'Fallaron las pruebas originales.' }
 if ($LASTEXITCODE -ne 0) { throw 'Fallaron las pruebas web y de persistencia.' }
 & java -cp 'bin;lib/*' PruebasCoordinacion
 if ($LASTEXITCODE -ne 0) { throw 'Fallaron las pruebas de demanda, iconos y migración.' }
+& java -cp 'bin;lib/*' PruebasGestionCoordinador
+if ($LASTEXITCODE -ne 0) { throw 'Fallaron las pruebas de gestión del coordinador.' }

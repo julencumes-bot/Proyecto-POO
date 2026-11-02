@@ -11,7 +11,7 @@ public class RegistroHorasBeca {
     }
     public void registrarSesion(SesionTutoria sesion) {
         if (sesion == null || !sesion.isFinalizada()
-                || !sesion.getSolicitud().getTutor().isRecibeHorasBeca()
+                || !sesion.getSolicitud().isRecibeHorasBeca()
                 || sesion.getSolicitud().getTutor().getRegistroHorasBeca() != this
                 || sesionesRegistradas.contains(sesion)) {
             throw new IllegalArgumentException("La sesion no permite acreditar horas beca.");

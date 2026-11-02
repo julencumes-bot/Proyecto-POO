@@ -63,6 +63,14 @@ public class ServicioWeb {
         if(!id.rol().equals("tutor") && !id.rol().equals("coordinador")) { throw new SecurityException("Se requiere un perfil de tutor."); }
         return tutor(s,id.carnet());
     }
+    private static void verificarAcceso(SistemaTutorias s, Seguridad.Identidad id) {
+        if(id==null || !List.of("estudiante","tutor","coordinador").contains(id.rol())) {
+            throw new SecurityException("Inicia sesión con un perfil válido.");
+        }
+        if(id.rol().equals("tutor") && !tutor(s,id.carnet()).isActivo()) {
+            throw new SecurityException("Tu perfil de tutor fue retirado. Comunícate con coordinación.");
+        }
+    }
     private static String texto(Map<String,String> f,String campo,int max) {
         String v=Validacion.texto(f.get(campo),campo);
         if(v.length()>max) { throw new IllegalArgumentException(campo+" excede el máximo de "+max+" caracteres."); }return v;
@@ -89,6 +97,7 @@ public class ServicioWeb {
     }
     public synchronized void ejecutar(Seguridad.Identidad id,String accion,Map<String,String> f) throws SQLException {
         var estado=repo.cargar(); SistemaTutorias s=estado.sistema();
+        verificarAcceso(s,id);
         var ec=new EstudianteController(s);var tc=new TutorController(s);var cc=new CoordinadorController(s);
         Seguridad.Cuenta nueva=null;
         switch(accion) {
@@ -110,6 +119,15 @@ public class ServicioWeb {
             case "horario" -> tc.agregarHorario(tutorActual(s,id),texto(f,"fecha",10),texto(f,"inicio",5),texto(f,"fin",5));
             case "aprobar" -> { rol(id,"coordinador");cc.aprobarTutor(tutor(s,f.get("tutor")),curso(s,f.get("curso"))); }
             case "curso" -> { rol(id,"coordinador");cc.registrarCurso(identificador(f,"codigo"),texto(f,"nombre",200),f.get("icono")); }
+            case "eliminar-curso" -> { rol(id,"coordinador");cc.eliminarCurso(curso(s,f.get("curso"))); }
+            case "eliminar-tutor" -> { rol(id,"coordinador");cc.eliminarTutor(tutor(s,f.get("tutor"))); }
+            case "editar-tutor" -> {
+                rol(id,"coordinador");
+                int anio=Integer.parseInt(texto(f,"anio",2));
+                if(anio<1 || anio>10) { throw new IllegalArgumentException("El año de carrera debe estar entre 1 y 10."); }
+                cc.modificarTutor(tutor(s,f.get("tutor")),texto(f,"nombre",200),correo(f),anio,
+                        "on".equals(f.get("beca")),Double.parseDouble(texto(f,"tarifa",20)));
+            }
             case "estudiante", "tutor" -> {
                 rol(id,"coordinador");String carnet=identificador(f,"carnet"),nombre=texto(f,"nombre",200),email=correo(f);
                 int anio=Integer.parseInt(texto(f,"anio",2));if(anio<1 || anio>10) { throw new IllegalArgumentException("El año de carrera debe estar entre 1 y 10."); }
@@ -122,21 +140,28 @@ public class ServicioWeb {
         repo.guardar(estado,nueva);
     }
     private Map<String,Object> solicitudJson(SolicitudTutoria sol) {
-        return obj("id",sol.getIdSolicitud(),"estudiante",sol.getEstudiante().getCarnet(),"nombreEstudiante",sol.getEstudiante().getNombre(),"tutor",sol.getTutor().getCarnet(),"nombreTutor",sol.getTutor().getNombre(),"curso",sol.getCurso().getCodigo(),"nombreCurso",sol.getCurso().getNombre(),"tema",sol.getTema(),"fecha",sol.getHorario().getFecha(),"inicio",sol.getHorario().getHoraInicio(),"fin",sol.getHorario().getHoraFin(),"estado",sol.getEstado().name(),"precio",sol.getPrecio());
+        return obj("id",sol.getIdSolicitud(),"estudiante",sol.getEstudiante().getCarnet(),"nombreEstudiante",sol.getEstudiante().getNombre(),"tutor",sol.getTutor().getCarnet(),"nombreTutor",sol.getTutor().getNombre(),"curso",sol.getCurso().getCodigo(),"nombreCurso",sol.getCurso().getNombre(),"tema",sol.getTema(),"fecha",sol.getHorario().getFecha(),"inicio",sol.getHorario().getHoraInicio(),"fin",sol.getHorario().getHoraFin(),"estado",sol.getEstado().name(),"precio",sol.getPrecio(),"beca",sol.isRecibeHorasBeca());
     }
     private boolean visible(SolicitudTutoria sol,Seguridad.Identidad id) {
         return id.rol().equals("coordinador") || (id.rol().equals("estudiante") ? sol.getEstudiante().getCarnet().equals(id.carnet()) : sol.getTutor().getCarnet().equals(id.carnet()));
     }
     public synchronized Map<String,Object> datos(Seguridad.Identidad id) throws SQLException {
         SistemaTutorias s=repo.cargar().sistema();var ec=new EstudianteController(s);var cc=new CoordinadorController(s);
+        verificarAcceso(s,id);
         Usuario u=id.rol().equals("coordinador") ? s.getCoordinador() : id.rol().equals("estudiante") ? estudiante(s,id.carnet()) : tutor(s,id.carnet());
         Estudiante e=id.rol().equals("estudiante") ? (Estudiante)u : null;
         List<Object> cursos=new ArrayList<>(),tutores=new ArrayList<>(),estudiantes=new ArrayList<>(),solicitudes=new ArrayList<>(),sesiones=new ArrayList<>(),preguntas=new ArrayList<>(),demanda=new ArrayList<>();
+        List<Object> cursosEliminados=new ArrayList<>();
         for(Curso c:s.getCursos()) {
+            if(!c.isActivo()) {
+                if(id.rol().equals("coordinador")) { cursosEliminados.add(obj("codigo",c.getCodigo(),"nombre",c.getNombre())); }
+                continue;
+            }
             Tutor alternativa=e==null ? null : cc.buscarTutorAlternativo(c,e);
             cursos.add(obj("codigo",c.getCodigo(),"nombre",c.getNombre(),"icono",c.getIcono(),"alternativa",alternativa==null ? "" : alternativa.getCarnet()));
         }
         for(Tutor t:s.getTutores()) {
+            if(!t.isActivo() && !id.rol().equals("coordinador")) { continue; }
             if(e!=null && (!t.isAprobado() || t.getCarnet().equals(e.getCarnet()))) { continue; }
             if(id.rol().equals("tutor") && !t.getCarnet().equals(id.carnet())) { continue; }
             List<Object> horarios=new ArrayList<>();
@@ -144,8 +169,9 @@ public class ServicioWeb {
                 boolean libre=h.isDisponible() && !s.tieneConflicto(t.getCarnet(),h) && (e==null || !s.tieneConflicto(e.getCarnet(),h));
                 if(e==null || libre) { horarios.add(obj("id",horarioId(h),"fecha",h.getFecha(),"inicio",h.getHoraInicio(),"fin",h.getHoraFin(),"duracion",h.getDuracionHoras(),"disponible",libre)); }
             }
-            List<String> asignados=new ArrayList<>();for(Curso c:t.getCursosAsignados()) { asignados.add(c.getCodigo()); }
+            List<String> asignados=new ArrayList<>();for(Curso c:t.getCursosAsignados()) { if(c.isActivo()) { asignados.add(c.getCodigo()); } }
             Map<String,Object> tj=obj("carnet",t.getCarnet(),"nombre",t.getNombre(),"anio",t.getAnioCarrera(),"beca",t.isRecibeHorasBeca(),"tarifa",t.getTarifaHora(),"aprobado",t.isAprobado(),"profesor",t==s.getCoordinador().getPerfilTutor(),"cursos",asignados,"horarios",horarios);
+            tj.put("activo",t.isActivo());
             if(e==null) { tj.put("correo",t.getCorreo());tj.put("remuneracion",t.getRemuneracionAcumulada());tj.put("horasBeca",t.getRegistroHorasBeca().getHorasAcumuladas()); }
             tutores.add(tj);
         }
@@ -153,13 +179,13 @@ public class ServicioWeb {
             for(DemandaCurso d:cc.consultarDemandaPorCurso()) {
                 List<Object> temas=new ArrayList<>();
                 for(var tema:d.temas().entrySet()) { temas.add(obj("tema",tema.getKey(),"cantidad",tema.getValue())); }
-                demanda.add(obj("codigo",d.curso().getCodigo(),"nombre",d.curso().getNombre(),"icono",d.curso().getIcono(),"cantidad",d.cantidad(),"temas",temas));
+                demanda.add(obj("codigo",d.curso().getCodigo(),"nombre",d.curso().getNombre(),"icono",d.curso().getIcono(),"activo",d.curso().isActivo(),"cantidad",d.cantidad(),"temas",temas));
             }
             for(Estudiante est:s.getEstudiantes()) { estudiantes.add(obj("carnet",est.getCarnet(),"nombre",est.getNombre(),"correo",est.getCorreo(),"anio",est.getAnioCarrera(),"recibeTutorias",cc.consultarEstudiantesConTutorias().contains(est))); }
         }
         for(SolicitudTutoria sol:s.getSolicitudes()) { if(visible(sol,id)) { solicitudes.add(solicitudJson(sol)); } }
         for(SesionTutoria ses:s.getSesiones()) { if(visible(ses.getSolicitud(),id)) { sesiones.add(obj("id",ses.getIdSesion(),"solicitud",ses.getSolicitud().getIdSolicitud(),"temas",ses.getTemasVistos(),"notas",ses.getNotas(),"proximo",ses.getTemaProximaTutoria(),"finalizada",ses.isFinalizada(),"duracion",ses.getDuracionHoras())); } }
         for(Pregunta q:s.getPreguntas()) { if(visible(q.getSolicitud(),id)) { preguntas.add(obj("id",q.getIdPregunta(),"solicitud",q.getSolicitud().getIdSolicitud(),"contenido",q.getContenido(),"estudiante",q.getEstudiante().getNombre())); } }
-        return obj("usuario",obj("nombre",u.getNombre(),"carnet",u.getCarnet(),"rol",id.rol()),"cursos",cursos,"tutores",tutores,"estudiantes",estudiantes,"solicitudes",solicitudes,"sesiones",sesiones,"preguntas",preguntas,"demanda",demanda);
+        return obj("usuario",obj("nombre",u.getNombre(),"carnet",u.getCarnet(),"rol",id.rol()),"cursos",cursos,"cursosEliminados",cursosEliminados,"tutores",tutores,"estudiantes",estudiantes,"solicitudes",solicitudes,"sesiones",sesiones,"preguntas",preguntas,"demanda",demanda);
     }
 }

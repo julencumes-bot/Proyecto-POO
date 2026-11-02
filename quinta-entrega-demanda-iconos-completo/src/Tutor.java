@@ -10,6 +10,7 @@ public class Tutor extends Usuario {
     private boolean recibeHorasBeca;
     private double tarifaHora;
     private int anioCarrera;
+    private boolean activo = true;
 
     public Tutor(String nombre, String carnet, String correo, int anioCarrera,
             boolean recibeHorasBeca, double tarifaHora) {
@@ -31,6 +32,23 @@ public class Tutor extends Usuario {
     public boolean isRecibeHorasBeca() { return recibeHorasBeca; }
     public double getTarifaHora() { return tarifaHora; }
     public boolean isAprobado() { return aprobado; }
+    public boolean isActivo() { return activo; }
+    void retirar() { activo = false; }
+    public void actualizarDatos(String nombre, String correo, int anio, boolean beca, double tarifa) {
+        // Validar todo antes de modificar el objeto compartido.
+        String nuevoNombre = Validacion.texto(nombre, "Nombre");
+        String nuevoCorreo = Validacion.texto(correo, "Correo");
+        Validacion.positivo(anio, "Año de carrera");
+        Validacion.noNegativo(tarifa, "Tarifa");
+        if (beca && tarifa != 0) {
+            throw new IllegalArgumentException("Un tutor de horas beca debe tener tarifa cero.");
+        }
+        setNombre(nuevoNombre);
+        setCorreo(nuevoCorreo);
+        anioCarrera = anio;
+        recibeHorasBeca = beca;
+        tarifaHora = tarifa;
+    }
     public void setAprobado(boolean aprobado) { this.aprobado = aprobado; }
     public double getRemuneracionAcumulada() { return remuneracionAcumulada; }
     public RegistroHorasBeca getRegistroHorasBeca() { return registroHorasBeca; }
@@ -58,7 +76,7 @@ public class Tutor extends Usuario {
             throw new IllegalArgumentException("La sesion no puede agregarse al historial.");
         }
         historialTutorias.add(sesion);
-        if (recibeHorasBeca) {
+        if (sesion.getSolicitud().isRecibeHorasBeca()) {
             registroHorasBeca.registrarSesion(sesion);
         } else {
             remuneracionAcumulada += sesion.getSolicitud().getPrecio();

@@ -7,7 +7,7 @@ public class EstudianteController {
     public ArrayList<Curso> consultarCursos() {
         ArrayList<Curso> resultado = new ArrayList<Curso>();
         for (Curso curso : sistema.getCursos()) {
-            if (!consultarTutores(curso).isEmpty()) { resultado.add(curso); }
+            if (curso.isActivo() && !consultarTutores(curso).isEmpty()) { resultado.add(curso); }
         }
         return resultado;
     }
@@ -16,8 +16,9 @@ public class EstudianteController {
         if (!sistema.getCursos().contains(curso)) {
             throw new IllegalArgumentException("Curso no registrado.");
         }
+        if (!curso.isActivo()) { return resultado; }
         for (Tutor tutor : curso.getTutoresDisponibles()) {
-            if (tutor.isAprobado() && !consultarHorarios(tutor).isEmpty()) { resultado.add(tutor); }
+            if (tutor.isActivo() && tutor.isAprobado() && !consultarHorarios(tutor).isEmpty()) { resultado.add(tutor); }
         }
         return resultado;
     }
@@ -27,7 +28,7 @@ public class EstudianteController {
             throw new IllegalArgumentException("Tutor no registrado.");
         }
         for (Horario horario : tutor.getDisponibilidad()) {
-            if (tutor.isAprobado() && horario.isDisponible()
+            if (tutor.isActivo() && tutor.isAprobado() && horario.isDisponible()
                     && !sistema.tieneConflicto(tutor.getCarnet(), horario)) {
                 resultado.add(horario);
             }
@@ -36,6 +37,7 @@ public class EstudianteController {
     }
     public double consultarPrecio(Tutor tutor, Curso curso, Horario horario) {
         if (!sistema.getTutores().contains(tutor) || !sistema.getCursos().contains(curso)
+                || !tutor.isActivo() || !curso.isActivo()
                 || !tutor.isAprobado() || !tutor.getCursosAsignados().contains(curso)
                 || !tutor.getDisponibilidad().contains(horario)) {
             throw new IllegalArgumentException("El tutor no ofrece esa combinacion de curso y horario.");

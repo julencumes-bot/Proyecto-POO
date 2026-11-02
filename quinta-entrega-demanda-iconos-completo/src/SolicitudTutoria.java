@@ -7,9 +7,17 @@ public class SolicitudTutoria {
     private Horario horario;
     private EstadoSolicitud estado;
     private double precio;
+    private final boolean recibeHorasBeca;
 
     public SolicitudTutoria(int id, Estudiante estudiante, Tutor tutor, Curso curso,
             String tema, Horario horario) {
+        this(id, estudiante, tutor, curso, tema, horario,
+                tutor == null || horario == null ? 0 : tutor.getTarifaHora() * horario.getDuracionHoras(),
+                tutor != null && tutor.isRecibeHorasBeca());
+    }
+    // Recuperar una reserva no recalcula su precio con la tarifa actual del tutor.
+    SolicitudTutoria(int id, Estudiante estudiante, Tutor tutor, Curso curso,
+            String tema, Horario horario, double precioPactado, boolean becaPactada) {
         Validacion.positivo(id, "Identificador");
         if (estudiante == null || tutor == null || curso == null || horario == null) {
             throw new IllegalArgumentException("La solicitud necesita estudiante, tutor, curso y horario.");
@@ -20,7 +28,8 @@ public class SolicitudTutoria {
         this.tutor = tutor;
         this.curso = curso;
         this.horario = horario;
-        precio = tutor.getTarifaHora() * horario.getDuracionHoras();
+        precio = precioPactado;
+        recibeHorasBeca = becaPactada;
         Validacion.noNegativo(precio, "Precio total");
         estado = EstadoSolicitud.PENDIENTE;
     }
@@ -32,6 +41,7 @@ public class SolicitudTutoria {
     public Horario getHorario() { return horario; }
     public EstadoSolicitud getEstado() { return estado; }
     public double getPrecio() { return precio; }
+    public boolean isRecibeHorasBeca() { return recibeHorasBeca; }
     // Exclusivo del repositorio: conserva el precio pactado al recuperar la reserva.
     void restaurarPrecio(double precioGuardado) {
         Validacion.noNegativo(precioGuardado, "Precio guardado");

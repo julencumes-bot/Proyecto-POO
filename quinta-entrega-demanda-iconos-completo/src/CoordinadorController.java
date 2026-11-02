@@ -7,8 +7,16 @@ public class CoordinadorController {
     private SistemaTutorias sistema;
 
     public CoordinadorController(SistemaTutorias sistema) { this.sistema = sistema; }
-    public ArrayList<Tutor> consultarTutores() { return sistema.getTutores(); }
-    public ArrayList<Curso> consultarCursos() { return sistema.getCursos(); }
+    public ArrayList<Tutor> consultarTutores() {
+        ArrayList<Tutor> resultado = sistema.getTutores();
+        resultado.removeIf(t -> !t.isActivo());
+        return resultado;
+    }
+    public ArrayList<Curso> consultarCursos() {
+        ArrayList<Curso> resultado = sistema.getCursos();
+        resultado.removeIf(c -> !c.isActivo());
+        return resultado;
+    }
     public ArrayList<Estudiante> consultarEstudiantes() { return sistema.getEstudiantes(); }
     public ArrayList<Estudiante> consultarEstudiantesConTutorias() {
         ArrayList<Estudiante> resultado = new ArrayList<Estudiante>();
@@ -35,7 +43,8 @@ public class CoordinadorController {
         return resultado;
     }
     public void aprobarTutor(Tutor tutor, Curso curso) {
-        if (!sistema.getTutores().contains(tutor) || !sistema.getCursos().contains(curso)) {
+        if (!sistema.getTutores().contains(tutor) || !sistema.getCursos().contains(curso)
+                || !tutor.isActivo() || !curso.isActivo()) {
             throw new IllegalArgumentException("El tutor y el curso deben estar registrados.");
         }
         sistema.getCoordinador().aprobarTutor(tutor, curso);
@@ -49,6 +58,43 @@ public class CoordinadorController {
     public void registrarCurso(String codigo, String nombre) { sistema.agregarCurso(new Curso(codigo, nombre)); }
     public void registrarCurso(String codigo, String nombre, String icono) {
         sistema.agregarCurso(new Curso(codigo, nombre, icono));
+    }
+    public void modificarTutor(Tutor tutor, String nombre, String correo, int anio, boolean beca, double tarifa) {
+        if (!sistema.getTutores().contains(tutor) || !tutor.isActivo()) {
+            throw new IllegalArgumentException("Tutor o profesor no disponible.");
+        }
+        tutor.actualizarDatos(nombre, correo, anio, beca, tarifa);
+        ProfesorCoordinador profesor = sistema.getCoordinador();
+        if (tutor == profesor.getPerfilTutor()) {
+            profesor.setNombre(tutor.getNombre());
+            profesor.setCorreo(tutor.getCorreo());
+        }
+    }
+    public void eliminarCurso(Curso curso) {
+        if (!sistema.getCursos().contains(curso) || !curso.isActivo()) {
+            throw new IllegalArgumentException("Curso no disponible.");
+        }
+        for (SolicitudTutoria solicitud : sistema.getSolicitudes()) {
+            if (solicitud.getCurso() == curso && estaAbierta(solicitud)) {
+                throw new IllegalStateException("Resuelve las solicitudes pendientes o confirmadas del curso antes de eliminarlo.");
+            }
+        }
+        curso.retirar();
+    }
+    public void eliminarTutor(Tutor tutor) {
+        if (!sistema.getTutores().contains(tutor) || !tutor.isActivo()) {
+            throw new IllegalArgumentException("Tutor o profesor no disponible.");
+        }
+        for (SolicitudTutoria solicitud : sistema.getSolicitudes()) {
+            if (solicitud.getTutor() == tutor && estaAbierta(solicitud)) {
+                throw new IllegalStateException("Resuelve las solicitudes pendientes o confirmadas del tutor o profesor antes de quitarlo.");
+            }
+        }
+        tutor.retirar();
+    }
+    private static boolean estaAbierta(SolicitudTutoria solicitud) {
+        return solicitud.getEstado() == EstadoSolicitud.PENDIENTE
+                || solicitud.getEstado() == EstadoSolicitud.CONFIRMADA;
     }
     public Tutor buscarTutorAlternativo(Curso curso, Estudiante estudiante) {
         if (!sistema.getEstudiantes().contains(estudiante)) {

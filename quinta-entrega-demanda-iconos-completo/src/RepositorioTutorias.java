@@ -45,12 +45,18 @@ public class RepositorioTutorias {
                 while(r.next()) {
                     String id=r.getString("carnet");
                     Tutor t=id.equals(profesor.getCarnet()) ? profesor.getPerfilTutor() : new Tutor(r.getString("nombre"),id,r.getString("correo"),r.getInt("anio"),r.getBoolean("beca"),r.getDouble("tarifa"));
+                    t.actualizarDatos(r.getString("nombre"),r.getString("correo"),r.getInt("anio"),r.getBoolean("beca"),r.getDouble("tarifa"));
+                    if(!r.getBoolean("activo")) { t.retirar(); }
                     if(t!=profesor.getPerfilTutor()) { s.agregarTutor(t); }
                     t.setAprobado(r.getBoolean("aprobado")); tutores.put(id,t);
                 }
             }
             try(var st=c.createStatement(); var r=st.executeQuery("SELECT * FROM cursos ORDER BY codigo")) {
-                while(r.next()) { Curso curso=new Curso(r.getString("codigo"),r.getString("nombre"),r.getString("icono")); s.agregarCurso(curso); cursos.put(curso.getCodigo(),curso); }
+                while(r.next()) {
+                    Curso curso=new Curso(r.getString("codigo"),r.getString("nombre"),r.getString("icono"));
+                    if(!r.getBoolean("activo")) { curso.retirar(); }
+                    s.agregarCurso(curso); cursos.put(curso.getCodigo(),curso);
+                }
             }
             try(var st=c.createStatement(); var r=st.executeQuery("SELECT * FROM aprobaciones ORDER BY tutor,curso")) {
                 while(r.next()) { profesor.aprobarTutor(tutores.get(r.getString("tutor")),cursos.get(r.getString("curso"))); }
@@ -60,8 +66,7 @@ public class RepositorioTutorias {
             }
             try(var st=c.createStatement(); var r=st.executeQuery("SELECT * FROM solicitudes ORDER BY id")) {
                 while(r.next()) {
-                    SolicitudTutoria sol=new SolicitudTutoria(r.getInt("id"),estudiantes.get(r.getString("estudiante")),tutores.get(r.getString("tutor")),cursos.get(r.getString("curso")),r.getString("tema"),horarios.get(r.getInt("horario")));
-                    sol.restaurarPrecio(r.getDouble("precio"));
+                    SolicitudTutoria sol=new SolicitudTutoria(r.getInt("id"),estudiantes.get(r.getString("estudiante")),tutores.get(r.getString("tutor")),cursos.get(r.getString("curso")),r.getString("tema"),horarios.get(r.getInt("horario")),r.getDouble("precio"),r.getBoolean("beca"));
                     s.agregarSolicitud(sol); sol.getEstudiante().agregarSolicitud(sol); solicitudes.put(sol.getIdSolicitud(),sol); estados.put(sol.getIdSolicitud(),r.getString("estado"));
                 }
             }
@@ -102,14 +107,14 @@ public class RepositorioTutorias {
                 SistemaTutorias s=estado.sistema(); ProfesorCoordinador p=s.getCoordinador();
                 ejecutar(c,"INSERT INTO coordinadores VALUES(?,?,?)",p.getCarnet(),p.getNombre(),p.getCorreo());
                 for(Estudiante e:s.getEstudiantes()) { ejecutar(c,"INSERT INTO estudiantes VALUES(?,?,?,?)",e.getCarnet(),e.getNombre(),e.getCorreo(),e.getAnioCarrera()); }
-                for(Tutor t:s.getTutores()) { ejecutar(c,"INSERT INTO tutores VALUES(?,?,?,?,?,?,?)",t.getCarnet(),t.getNombre(),t.getCorreo(),t.getAnioCarrera(),t.isRecibeHorasBeca(),t.getTarifaHora(),t.isAprobado()); }
-                for(Curso curso:s.getCursos()) { ejecutar(c,"INSERT INTO cursos(codigo,nombre,icono) VALUES(?,?,?)",curso.getCodigo(),curso.getNombre(),curso.getIcono()); }
+                for(Tutor t:s.getTutores()) { ejecutar(c,"INSERT INTO tutores(carnet,nombre,correo,anio,beca,tarifa,aprobado,activo) VALUES(?,?,?,?,?,?,?,?)",t.getCarnet(),t.getNombre(),t.getCorreo(),t.getAnioCarrera(),t.isRecibeHorasBeca(),t.getTarifaHora(),t.isAprobado(),t.isActivo()); }
+                for(Curso curso:s.getCursos()) { ejecutar(c,"INSERT INTO cursos(codigo,nombre,icono,activo) VALUES(?,?,?,?)",curso.getCodigo(),curso.getNombre(),curso.getIcono(),curso.isActivo()); }
                 Map<Horario,Integer> ids=new IdentityHashMap<>(); int id=0;
                 for(Tutor t:s.getTutores()) {
                     for(Curso curso:t.getCursosAsignados()) { ejecutar(c,"INSERT INTO aprobaciones VALUES(?,?)",t.getCarnet(),curso.getCodigo()); }
                     for(Horario h:t.getDisponibilidad()) { ids.put(h,++id); ejecutar(c,"INSERT INTO horarios VALUES(?,?,?,?,?)",id,t.getCarnet(),h.getFecha(),h.getHoraInicio(),h.getHoraFin()); }
                 }
-                for(SolicitudTutoria sol:s.getSolicitudes()) { ejecutar(c,"INSERT INTO solicitudes VALUES(?,?,?,?,?,?,?,?)",sol.getIdSolicitud(),sol.getEstudiante().getCarnet(),sol.getTutor().getCarnet(),sol.getCurso().getCodigo(),ids.get(sol.getHorario()),sol.getTema(),sol.getEstado().name(),sol.getPrecio()); }
+                for(SolicitudTutoria sol:s.getSolicitudes()) { ejecutar(c,"INSERT INTO solicitudes(id,estudiante,tutor,curso,horario,tema,estado,precio,beca) VALUES(?,?,?,?,?,?,?,?,?)",sol.getIdSolicitud(),sol.getEstudiante().getCarnet(),sol.getTutor().getCarnet(),sol.getCurso().getCodigo(),ids.get(sol.getHorario()),sol.getTema(),sol.getEstado().name(),sol.getPrecio(),sol.isRecibeHorasBeca()); }
                 for(SesionTutoria ses:s.getSesiones()) { ejecutar(c,"INSERT INTO sesiones VALUES(?,?,?,?,?,?)",ses.getIdSesion(),ses.getSolicitud().getIdSolicitud(),ses.getTemasVistos(),ses.getNotas(),ses.getTemaProximaTutoria(),ses.isFinalizada()); }
                 for(Pregunta q:s.getPreguntas()) { ejecutar(c,"INSERT INTO preguntas VALUES(?,?,?,?)",q.getIdPregunta(),q.getSolicitud().getIdSolicitud(),q.getEstudiante().getCarnet(),q.getContenido()); }
                 if(nueva!=null) { Seguridad.insertar(c,nueva); }
