@@ -1,0 +1,7 @@
+Paquete ZIP extraído y comprobado el 12 de octubre de 2026.
+Compilación --release 17 -Xlint:all: correcta sin advertencias.
+Bytecode Java 17: versión 61.
+Servidor iniciado desde el paquete en puerto libre.
+Página inicial y sesión anónima: HTTP 200.
+H2 local creado usando exclusivamente los JAR incluidos.
+No se requirieron descargas ni los datos de la carpeta original.
