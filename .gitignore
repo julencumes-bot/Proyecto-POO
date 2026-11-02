@@ -1,0 +1,4 @@
+data/
+*.class
+node_modules/
+**/tests/web/resultados/
