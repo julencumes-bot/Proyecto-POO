@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#184f42">
+  <meta name="description" content="Encuentra apoyo académico, organiza tus tutorías y sigue tu progreso.">
+  <title>Tutorías | Tu siguiente paso</title>
+  <link rel="stylesheet" href="/styles.css">
+  <script src="/app.js" defer></script>
+</head>
+<body>
+  <a class="skip" href="#contenido">Ir al contenido</a>
+  <div id="app"><main class="loading" aria-live="polite">Preparando tus tutorías…</main></div>
+  <div id="aviso" role="status" aria-live="polite"></div>
+  <dialog id="confirmacion" aria-labelledby="confirmar-titulo">
+    <h2 id="confirmar-titulo">Cancelar esta tutoría</h2>
+    <p>La solicitud se cancelará y el horario volverá a estar disponible.</p>
+    <div class="actions"><button id="conservar" class="secondary">Conservar tutoría</button><button id="cancelar-confirmado" class="danger">Sí, cancelar tutoría</button></div>
+  </dialog>
+</body>
+</html>
