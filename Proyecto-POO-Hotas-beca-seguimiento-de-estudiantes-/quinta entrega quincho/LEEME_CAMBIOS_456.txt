@@ -1,0 +1,88 @@
+CAMBIOS 4, 5 Y 6 - PROYECTO POO
+
+Se trabajó sobre quinta-entrega-demanda-iconos-completo del ZIP entregado.
+Se conservaron la estructura Java, los controladores, H2/PostgreSQL, los
+filtros y perfiles de Caleb, y los recursos visuales originales.
+No se añadieron librerías de ejecución ni frameworks.
+
+INICIAR
+- macOS/Linux: desde esta carpeta ejecutar: sh iniciar.sh
+- Windows: abrir Iniciar web.cmd.
+- Abrir http://127.0.0.1:8080. Requiere JDK 17 o superior.
+- Cuentas de demostración: E001/E002 estudiante; T001/T002 tutor;
+  P001 coordinación. Contraseña: Tutor2026!
+- El src situado fuera de esta carpeta es la versión anterior de consola.
+  La aplicación actual es esta subcarpeta que contiene web, sql y lib.
+
+4. MODALIDAD Y UBICACIÓN
+- El tutor publica fecha, horas, modalidad Virtual/Presencial y enlace/salón.
+- Internamente Virtual conserva el código EN_LINEA para aprovechar lo existente.
+- El enlace debe ser una URL HTTP/HTTPS con servidor válido. No se crean reuniones.
+- Disponibilidad permite guardar un enlace permanente opcional. Se copia al
+  seleccionar Virtual; el tutor puede editar la copia antes de publicar.
+- Editar el enlace permanente no cambia horarios ni reservas existentes.
+- El alumno elige el bloque; no puede enviar condiciones diferentes por la API.
+- Modalidad y ubicación se copian a la solicitud. Los bloques reservados no se
+  pueden editar. Tras cancelar, un bloque libre puede editarse conservando la
+  ubicación de la reserva cancelada.
+- El directorio y el resumen muestran modalidad y salón. El enlace virtual
+  completo solo está disponible al titular del horario, sus participantes en
+  la solicitud y coordinación; no se envía en el directorio del estudiante.
+- Mis solicitudes, historial y vistas del tutor conservan los detalles.
+- La migración deja los horarios antiguos como Pendiente de completar. El tutor
+  completa los bloques libres antes de ofrecerlos. Las reservas antiguas sin
+  ubicación siguen sin ubicación; no se inventan enlaces ni salones.
+
+5. MULTIPLICADORES DE HORAS BECA
+- Coordinación: Tutores > Editar datos y pago > Multiplicador de horas beca.
+  También aparece al registrar un tutor. Solo se habilita para horas beca.
+- Valores permitidos: 1, 2, 3 y 5. Predeterminado y migración de solicitudes: 1.
+- Cada reserva guarda su factor y forma de compensación. Cambiar el perfil
+  afecta solo a nuevas reservas. Un tutor remunerado no multiplica su precio.
+- Al finalizar se pide duración real. Ejemplo: 1.5 horas por factor 3 = 4.5 horas
+  acreditadas. El alumno conserva precio cero y la duración sigue siendo 1.5.
+- Compensación muestra duración, factor y crédito. No se permite finalizar
+  dos veces. Cancelaciones y cierre por ausencia no generan crédito.
+- Registrar ausencia cierra la solicitud como cancelada y marca la sesión.
+  No registra ni confirma un strike. El historial de beca se conserva aunque
+  después el tutor cambie a pago.
+- Antes no existía duración real separada: para esas sesiones se conserva la
+  duración del horario que ya utilizaba el proyecto.
+
+6. PERFILES Y COMENTARIOS DE ESTUDIANTES
+- Tutor: Mis estudiantes, o Ver perfil del estudiante en una solicitud.
+- Coordinación: Estudiantes > Ver perfil.
+- Se muestra nombre, año, total de sesiones finalizadas y conteos separados
+  de solicitudes pendientes, confirmadas y canceladas.
+- El perfil reúne seguimiento compartido y observaciones académicas internas
+  de los tutores/profesor. Las notas del seguimiento siguen visibles al alumno;
+  la tabla nueva de comentarios internos nunca se entrega a estudiantes.
+- Solo quien impartió una sesión finalizada puede comentar sobre ella.
+  Autor, fecha UTC, estudiante y sesión se guardan en el servidor.
+- El servidor comprueba permisos tanto al leer el perfil como al escribir.
+  Cambiar el carné en la URL no permite acceder a un estudiante ajeno.
+- El paso 8 (reportes/strikes confirmados por semestre) no está incluido en
+  el proyecto recibido. Se muestra registro no disponible y se devuelve null;
+  no se usa cero ni se cuentan ausencias como strikes. Al integrar ese paso
+  se debe calcular solo con reportes confirmados del semestre.
+
+ARCHIVOS
+- Modelos: Horario, ModalidadTutoria, SolicitudTutoria, Tutor, SesionTutoria,
+  RegistroHorasBeca y Estudiante. Nueva clase: ComentarioAcademico.
+- Controladores: TutorController y EstudianteController.
+- Persistencia/API: RepositorioTutorias, ServicioWeb, WebMain y sql/schema.sql.
+- Pantallas: web/app.js y ajustes pequeños en styles.css.
+- Consola incluida en esta subcarpeta: Main y TutorView adaptados a horarios
+  completos. El resto de las funciones nuevas se maneja desde la web.
+
+VERIFICACIÓN
+- Java: sh probar.sh (Windows: scripts/probar.ps1).
+- 467 comprobaciones Java: lógica, API HTTP, permisos, migración, reinicio,
+  doble reserva simultánea, cuatro factores, pago, finalización repetida y perfiles.
+- 17 pruebas JavaScript: npm run test:ui (requiere Node).
+- Recorrido real de Chrome: npm run test:entrega456 (Node y Playwright).
+  Usa una base temporal y cierra el servidor al terminar. Capturas en
+  tests/web/resultados-456. No cambia data/tutorias.
+- Se verificó con H2. No se probó contra un servidor PostgreSQL.
+- La base data/tutorias.mv.db incluida se conserva igual a la del ZIP original;
+  las nuevas columnas se agregan automáticamente al iniciar.

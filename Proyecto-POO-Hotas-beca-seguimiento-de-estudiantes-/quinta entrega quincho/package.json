@@ -1,0 +1,12 @@
+{
+  "name": "tutorias-poo-pruebas",
+  "private": true,
+  "scripts": {
+    "test:ui": "node --test tests/web/coordinacion.cjs tests/web/gestion.cjs tests/web/modalidad.cjs",
+    "test:web": "node tests/web/navegador.cjs",
+    "test:entrega456": "node tests/web/entrega456.cjs"
+  },
+  "devDependencies": {
+    "playwright": "1.62.1"
+  }
+}
