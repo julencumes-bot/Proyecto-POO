@@ -270,4 +270,1300 @@ document.addEventListener('change',e=>{const el=e.target;
 document.addEventListener('input',e=>{if(e.target.id==='buscar-curso'){const q=e.target.value.toLocaleLowerCase();const courses=state.cursos.filter(c=>(c.nombre+' '+c.codigo).toLocaleLowerCase().includes(q));document.querySelector('#lista-cursos').innerHTML=courses.length?courseCards(courses):empty('No encontramos ese curso','Prueba otra palabra o el código del curso.');}});
 window.addEventListener('hashchange',async()=>{try{if(state)await load();render();window.scrollTo(0,0);document.querySelector('#contenido')?.focus({preventScroll:true});}catch(e){if(e.status===401){await init();}else notify('No se pudo actualizar: '+e.message);}});
 async function init(){try{const s=await api('sesion');csrf=s.csrf;demo=s.demo;if(s.autenticado)await load();else state=null;render();}catch(e){app.innerHTML='<main class="app-error"><h1>No pudimos conectar</h1><p>'+esc(e.message)+'</p><button id="reintentar">Reintentar</button></main>';document.querySelector('#reintentar').onclick=init;}}
+// Filtros de historial y perfiles académicos — Caleb.
+
+navigation = function () {
+    if (state.usuario.rol === 'estudiante') {
+        return [
+            ['inicio', '⌂', 'Mi espacio'],
+            ['buscar', '⌕', 'Buscar tutoría'],
+            ['solicitudes', '▤', 'Mis solicitudes'],
+            ['historial', '◷', 'Historial'],
+            ['preguntas', '◌', 'Mis preguntas']
+        ];
+    }
+
+    if (state.usuario.rol === 'tutor') {
+        return [
+            ['inicio', '⌂', 'Mi espacio'],
+            ['solicitudes', '▤', 'Solicitudes'],
+            ['sesiones', '◷', 'Sesiones'],
+            ['disponibilidad', '▦', 'Disponibilidad'],
+            ['historial', '✓', 'Historial'],
+            ['compensacion', '◇', 'Compensación'],
+            ['mi-perfil', '♧', 'Mi perfil']
+        ];
+    }
+
+    return [
+        ['inicio', '⌂', 'Resumen'],
+        ['tutores', '◉', 'Tutores'],
+        ['estudiantes', '♧', 'Estudiantes'],
+        ['cursos', '▤', 'Cursos'],
+        ['solicitudes', '▤', 'Solicitudes'],
+        ['progreso', '↗', 'Progreso'],
+        ['demanda', '▥', 'Demanda'],
+        ['historial', '◷', 'Historial general'],
+        ['profesor', '◇', 'Impartir tutorías'],
+        ['mi-perfil', '♧', 'Mi perfil académico']
+    ];
+};
+
+search = function () {
+    return heading(
+        'Encuentra tu próxima tutoría',
+        'Busca un curso y elige el apoyo que necesitas.'
+    ) + profileSearchView() + `
+        <h2>Explora los cursos</h2>
+        <div class="filterbar">
+            <div class="field">
+                <label for="buscar-curso">Nombre o código del curso</label>
+                <input
+                    type="search"
+                    id="buscar-curso"
+                    placeholder="Por ejemplo, Programación">
+            </div>
+        </div>
+        <div id="lista-cursos">${courseCards(state.cursos)}</div>
+    `;
+};
+
+booking = function (q) {
+    if (!state.cursos.length) {
+        return heading(
+            'Solicitar tutoría',
+            'Consulta la oferta académica.'
+        ) + empty(
+            'Aún no hay cursos',
+            'Coordinación debe registrar los cursos y aprobar a los tutores.'
+        );
+    }
+
+    return heading(
+        'Reserva un espacio para aprender',
+        'Elige tu curso, tu tutor y el horario. Revisa el costo antes de confirmar.',
+        link('#buscar', 'Volver a cursos', 'button secondary')
+    ) + `
+        <div class="booking-grid">
+            <section class="card">
+                <form data-action="solicitar" id="reserva-form">
+                    ${select(
+                        'curso',
+                        '1. ¿En qué curso necesitas apoyo?',
+                        state.cursos,
+                        'codigo',
+                        'nombre',
+                        'Selecciona un curso'
+                    )}
+
+                    <div class="field">
+                        <label for="tutor">2. Elige un tutor</label>
+                        <select id="tutor" name="tutor" required>
+                            <option value="">Primero selecciona un curso</option>
+                        </select>
+                    </div>
+
+                    <button
+                        type="button"
+                        class="text-button"
+                        id="alternativa">
+                        Ayúdame a encontrar un tutor
+                    </button>
+
+                    <p
+                        id="recomendacion"
+                        class="muted small"
+                        role="status"></p>
+
+                    <div id="perfiles-reserva" class="small"></div>
+
+                    <div class="field">
+                        <label for="horario">3. Elige un horario</label>
+                        <select id="horario" name="horario" required>
+                            <option value="">Primero selecciona un tutor</option>
+                        </select>
+                    </div>
+
+                    ${textarea('tema', '4. ¿Qué tema quieres trabajar?')}
+
+                    <p class="muted small">
+                        Por ejemplo: herencia y constructores.
+                        La solicitud reservará el bloque completo.
+                    </p>
+
+                    <div class="field">
+                        <label for="modalidad">5. Modalidad de la tutoría</label>
+                        <select id="modalidad" name="modalidad" required>
+                            <option value="">Selecciona una modalidad</option>
+                            <option value="EN_LINEA">En línea</option>
+                            <option value="PRESENCIAL">Presencial</option>
+                        </select>
+                    </div>
+
+                    ${errorBox()}
+
+                    <button type="submit">Confirmar solicitud</button>
+                </form>
+            </section>
+
+            <aside class="summary" aria-label="Resumen de la reserva">
+                <p class="eyebrow">TU TUTORÍA</p>
+                <h2>Antes de confirmar</h2>
+                <div id="resumen-reserva">
+                    <p>
+                        Selecciona un curso, tutor y horario para conocer
+                        los detalles.
+                    </p>
+                </div>
+            </aside>
+        </div>
+    `;
+};
+
+updateTutors = function (preselected = '') {
+    const course = document.querySelector('#curso');
+    const tutorSelect = document.querySelector('#tutor');
+
+    if (!course || !tutorSelect) return;
+
+    const available = state.tutores.filter(t =>
+        t.cursos.includes(course.value)
+        && t.horarios.some(h => h.disponible)
+    );
+
+    tutorSelect.innerHTML = options(
+        available,
+        'carnet',
+        'nombre',
+        available.length
+            ? 'Selecciona un tutor'
+            : 'No hay tutores disponibles'
+    );
+
+    if (available.some(t => t.carnet === preselected)) {
+        tutorSelect.value = preselected;
+    }
+
+    document.querySelector('#recomendacion').textContent =
+        available.length
+            ? ''
+            : 'No hay horarios compatibles en este curso. '
+                + 'Prueba otro curso o consulta a coordinación.';
+
+    document.querySelector('#perfiles-reserva').innerHTML =
+        state.tutores
+            .filter(t =>
+                t.activo !== false
+                && t.aprobado
+                && t.cursos.includes(course.value)
+            )
+            .map(t => link(
+                publicProfileUrl(t, course.value),
+                'Ver perfil de ' + esc(t.nombre),
+                'text-button'
+            ))
+            .join(' · ');
+
+    updateHours();
+};
+
+updateSummary = function () {
+    const course = state.cursos.find(c =>
+        c.codigo === document.querySelector('#curso')?.value
+    );
+
+    const tutor = state.tutores.find(t =>
+        t.carnet === document.querySelector('#tutor')?.value
+    );
+
+    const hour = tutor?.horarios.find(h =>
+        h.id === document.querySelector('#horario')?.value
+    );
+
+    const panel = document.querySelector('#resumen-reserva');
+    if (!panel) return;
+
+    const modality = document.querySelector('#modalidad')?.value;
+
+    panel.innerHTML = `
+        <dl>
+            <dt>Curso</dt>
+            <dd>${esc(course?.nombre || 'Por seleccionar')}</dd>
+
+            <dt>Tutor</dt>
+            <dd>${tutor
+                ? link(
+                    publicProfileUrl(tutor, course?.codigo || ''),
+                    esc(tutor.nombre),
+                    'text-button'
+                )
+                : 'Por seleccionar'
+            }</dd>
+
+            <dt>Horario</dt>
+            <dd>${hour
+                ? date(hour.fecha) + ' · ' + hour.inicio + ' a ' + hour.fin
+                : 'Por seleccionar'
+            }</dd>
+
+            <dt>Modalidad</dt><dd>${modality
+                ? modalityLabel(modality)
+                : 'Por seleccionar'
+            }</dd>
+        </dl>
+
+        <hr>
+
+        <span class="muted small">PRECIO TOTAL</span>
+
+        <div class="price">${hour
+            ? money(hour.duracion * tutor.tarifa)
+            : '—'
+        }</div>
+
+        <p class="small">${tutor?.beca
+            ? 'Esta tutoría es gratuita y acredita horas beca al tutor.'
+            : hour
+                ? hour.duracion + ' horas × '
+                    + money(tutor.tarifa) + ' por hora.'
+                : 'El precio aparecerá al elegir el horario.'
+        }</p>
+
+        <p class="small muted">
+            El tutor podrá aceptar o rechazar tu solicitud según
+            la modalidad elegida. Podrás revisar el estado en
+            Mis solicitudes.
+        </p>
+    `;
+};
+
+personForm = function (type) {
+    let body =
+        field('nombre', 'Nombre completo', 'text', '', 'maxlength="200"')
+        + '<div class="field-row">'
+        + field(
+            'carnet',
+            'Carné',
+            'text',
+            '',
+            'pattern="[A-Za-z0-9_-]+" maxlength="80"'
+        )
+        + field(
+            'anio',
+            'Año de carrera',
+            'number',
+            '1',
+            'min="1" max="10"'
+        )
+        + '</div>'
+        + field(
+            'correo',
+            'Correo electrónico',
+            'email',
+            '',
+            'maxlength="200"'
+        )
+        + field(
+            'clave',
+            'Contraseña inicial',
+            'password',
+            '',
+            'minlength="8" maxlength="128" autocomplete="new-password"'
+        );
+
+    if (type === 'tutor') {
+        body += `
+            <div class="field">
+                <label class="check-label">
+                    <input type="checkbox" name="beca" id="beca">
+                    Recibe horas beca
+                </label>
+            </div>
+        ` + field(
+            'tarifa',
+            'Tarifa por hora en quetzales',
+            'number',
+            '0',
+            'min="0" step="0.01"'
+        ) + academicFields();
+    }
+
+    return form(type, body, 'Registrar ' + type);
+};
+
+tutors = function () {
+    const active = state.tutores.filter(t => t.activo !== false);
+    const retired = state.tutores.filter(t => t.activo === false);
+
+    return heading(
+        'Tutores que acompañan',
+        'Registra tutores, edita sus datos y autoriza los cursos que pueden impartir.'
+    ) + `
+        <div class="grid">
+            <section class="card">
+                <h2>Aprobar tutor por curso</h2>
+                ${state.cursos.length && active.length
+                    ? form(
+                        'aprobar',
+                        select('tutor', 'Tutor', active, 'carnet', 'nombre')
+                        + select(
+                            'curso', 'Curso', state.cursos, 'codigo', 'nombre'
+                        ),
+                        'Aprobar tutor'
+                    )
+                    : empty(
+                        'Registra un curso y un tutor',
+                        'Después podrás autorizar las tutorías.'
+                    )
+                }
+            </section>
+
+            <section class="card">
+                <h2>Ampliar la comunidad</h2>
+                <p class="muted">
+                    Cada nuevo tutor recibe una cuenta y necesita
+                    autorización por curso.
+                </p>
+                <details>
+                    <summary>Registrar un nuevo tutor</summary>
+                    ${personForm('tutor')}
+                </details>
+            </section>
+        </div>
+
+        <div class="section-heading">
+            <h2>Tutores y profesores activos</h2>
+        </div>
+
+        <div class="grid">${active.map(t => `
+            <article class="card">
+                <div class="card-top">
+                    <h3>${esc(t.nombre)}</h3>
+                    <span class="badge">${t.profesor
+                        ? 'Profesor'
+                        : t.aprobado ? 'Aprobado' : 'Sin aprobar'
+                    }</span>
+                </div>
+
+                <p class="muted small">
+                    ${esc(t.carnet)} · ${esc(t.correo)}
+                </p>
+
+                <p class="small">
+                    ${t.beca
+                        ? 'Horas beca · sin costo'
+                        : money(t.tarifa) + ' por hora'
+                    }
+                    ${t.profesor ? '' : ' · Año ' + t.anio}
+                </p>
+
+                <div class="detail">
+                    <h4>Cursos autorizados</h4>
+                    <p>${esc(
+                        t.cursos.map(id =>
+                            state.cursos.find(c => c.codigo === id)?.nombre
+                        ).filter(Boolean).join(', ') || 'Ninguno todavía'
+                    )}</p>
+                </div>
+
+                <div class="actions">
+                    ${link(
+                        '#editar-tutor?tutor=' + encodeURIComponent(t.carnet),
+                        'Editar datos y pago',
+                        'button secondary'
+                    )}
+                    <button
+                        type="button"
+                        class="danger"
+                        data-command="eliminar-tutor"
+                        data-id="${esc(t.carnet)}">
+                        Quitar ${t.profesor ? 'profesor' : 'tutor'}
+                    </button>
+                </div>
+
+                ${link(
+                    publicProfileUrl(t),
+                    'Consultar perfil académico',
+                    'text-button'
+                )}
+
+                ${tutorHistory(t)}
+            </article>
+        `).join('') || empty(
+            'No hay tutores activos',
+            'Registra un tutor para ampliar la oferta.'
+        )}</div>
+
+        ${retired.length ? `
+            <section class="card">
+                <details>
+                    <summary>Personal retirado (${retired.length})</summary>
+                    <p class="muted small">
+                        Se conserva su historial. Estos perfiles ya no
+                        aparecen en la oferta de tutorías.
+                    </p>
+                    ${retired.map(t => `
+                        <article>
+                            <h3>${esc(t.nombre)}</h3>
+                            <p class="small">${esc(t.carnet)} · Retirado</p>
+                            ${tutorHistory(t)}
+                        </article>
+                    `).join('')}
+                </details>
+            </section>
+        ` : ''}
+    `;
+};
+
+editTutor = function (q) {
+    const tutor = state.tutores.find(t =>
+        t.carnet === q.get('tutor') && t.activo !== false
+    );
+
+    if (!tutor) {
+        return empty(
+            'Perfil no disponible',
+            'Selecciona un tutor o profesor activo.',
+            link('#tutores', 'Volver a tutores')
+        );
+    }
+
+    const body =
+        hidden('tutor', tutor.carnet)
+        + field(
+            'carnet',
+            'Carné (identificador fijo)',
+            'text',
+            tutor.carnet,
+            'readonly'
+        )
+        + field(
+            'nombre',
+            'Nombre completo',
+            'text',
+            tutor.nombre,
+            'maxlength="200"'
+        )
+        + field(
+            'correo',
+            'Correo electrónico',
+            'email',
+            tutor.correo,
+            'maxlength="200"'
+        )
+        + (tutor.profesor
+            ? hidden('anio', tutor.anio)
+            : field(
+                'anio',
+                'Año de carrera',
+                'number',
+                tutor.anio,
+                'min="1" max="10"'
+            )
+        )
+        + academicFields(tutor)
+        + `
+            <div class="field">
+                <label class="check-label">
+                    <input
+                        type="checkbox"
+                        name="beca"
+                        id="beca"
+                        ${tutor.beca ? 'checked' : ''}>
+                    Recibe horas beca (desmarca para pago)
+                </label>
+            </div>
+        `
+        + field(
+            'tarifa',
+            'Tarifa por hora en quetzales',
+            'number',
+            tutor.beca ? 0 : tutor.tarifa,
+            'min="0" step="0.01" ' + (tutor.beca ? 'readonly' : '')
+        )
+        + `
+            <p class="muted small">
+                Las nuevas solicitudes usarán esta compensación.
+                Las reservas existentes conservan su precio y su forma de compensación;
+                las horas beca y pagos ya acumulados se mantienen.
+            </p>
+        `;
+
+    return heading(
+        'Editar ' + (tutor.profesor ? 'profesor' : 'tutor'),
+        'Actualiza sus datos y su forma de compensación.',
+        link('#tutores', 'Volver a tutores', 'button secondary')
+    ) + `
+        <section class="card form-panel">
+            ${form('editar-tutor', body, 'Guardar cambios')}
+        </section>
+    `;
+};
+
+progress = function (q) {
+    return heading(
+        'Cada sesión deja un avance',
+        'Consulta los contenidos, las notas y el siguiente tema de cada estudiante.'
+    ) + `
+        <div class="filterbar">
+            <div class="field">
+                <label for="progreso-estudiante">Estudiante</label>
+                <select id="progreso-estudiante">
+                    <option value="">Todos los estudiantes</option>
+                    ${state.estudiantes.map(e => `
+                        <option
+                            value="${esc(e.carnet)}"
+                            ${q.get('estudiante') === e.carnet ? 'selected' : ''}>
+                            ${esc(e.nombre)}
+                        </option>
+                    `).join('')}
+                </select>
+            </div>
+        </div>
+
+        <div id="lista-progreso">
+            ${history(q.get('estudiante') || '', 'progreso')}
+        </div>
+    `;
+};
+
+render = function () {
+    if (!state) {
+        login();
+        return;
+    }
+
+    const { page, q } = route();
+
+    const allowed = new Set([
+        ...navigation().map(n => n[0]),
+        'ayuda',
+        'cuenta',
+        ...(state.usuario.rol === 'estudiante'
+            ? ['reservar', 'perfil']
+            : ['seguimiento']),
+        ...(state.usuario.rol === 'coordinador'
+            ? ['editar-tutor', 'perfil']
+            : [])
+    ]);
+
+    if (!allowed.has(page)) {
+        location.hash = 'inicio';
+        return;
+    }
+
+    let content;
+
+    switch (page) {
+        case 'inicio':
+            content = home();
+            break;
+        case 'buscar':
+            content = search();
+            break;
+        case 'perfil':
+            content = profile(q);
+            break;
+        case 'mi-perfil':
+            content = ownProfile();
+            break;
+        case 'reservar':
+            content = booking(q);
+            break;
+        case 'solicitudes':
+            content = requests();
+            break;
+        case 'historial':
+            content = heading(
+                'Un registro de lo que has aprendido',
+                'Temas, notas y siguientes pasos de las tutorías finalizadas.'
+            ) + history();
+            break;
+        case 'preguntas':
+            content = questions();
+            break;
+        case 'sesiones':
+            content = sessions();
+            break;
+        case 'seguimiento':
+            content = followup(q);
+            break;
+        case 'disponibilidad':
+            content = availability();
+            break;
+        case 'compensacion':
+            content = compensation();
+            break;
+        case 'tutores':
+            content = tutors();
+            break;
+        case 'editar-tutor':
+            content = editTutor(q);
+            break;
+        case 'estudiantes':
+            content = students();
+            break;
+        case 'cursos':
+            content = courses();
+            break;
+        case 'progreso':
+            content = progress(q);
+            break;
+        case 'demanda':
+            content = demand();
+            break;
+        case 'profesor':
+            content = professor(q);
+            break;
+        case 'cuenta':
+            content = account();
+            break;
+        default:
+            content = help();
+    }
+
+    shell(content, page);
+
+    if (page === 'reservar') {
+        document.querySelector('#curso').value = q.get('curso') || '';
+        updateTutors(q.get('tutor') || '');
+    }
+};
+
+// Historial: controles independientes de la lista de resultados.
+
+const historySelections = new Map();
+const profileSearch = { nombre: '', curso: '' };
+
+const normalizeSearch = value => String(value ?? '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLocaleLowerCase()
+    .trim();
+
+function historySource(student = '') {
+    return sessionRequests(true).filter(x =>
+        !student || x.request.estudiante === student
+    );
+}
+
+function historyKey(scope, student) {
+    return [
+        state.usuario.rol,
+        state.usuario.carnet,
+        scope,
+        student
+    ].join('|');
+}
+
+function historySelection(scope, student) {
+    const key = historyKey(scope, student);
+
+    if (!historySelections.has(key)) {
+        historySelections.set(key, { curso: '', persona: '' });
+    }
+
+    return historySelections.get(key);
+}
+
+function historyChoices(list, id, name) {
+    return [...new Map(
+        list.map(x => [
+            x.request[id],
+            { id: x.request[id], nombre: x.request[name] }
+        ])
+    ).values()].sort((a, b) =>
+        a.nombre.localeCompare(b.nombre, 'es')
+    );
+}
+
+function historySelect(id, label, choices, value) {
+    return `
+        <div class="field">
+            <label for="${id}">${label}</label>
+            <select id="${id}">
+                <option value="">Todos</option>
+                ${choices.map(x => `
+                    <option
+                        value="${esc(x.id)}"
+                        ${value === x.id ? 'selected' : ''}>
+                        ${esc(x.nombre)} · ${esc(x.id)}
+                    </option>
+                `).join('')}
+            </select>
+        </div>
+    `;
+}
+
+history = function (filter = '', scope = 'historial') {
+    const list = historySource(filter);
+    const selected = historySelection(scope, filter);
+    const asTutor = state.usuario.rol === 'tutor';
+
+    const personId = asTutor ? 'estudiante' : 'tutor';
+    const personName = asTutor ? 'nombreEstudiante' : 'nombreTutor';
+
+    return `
+        <section
+            data-history-scope="${esc(scope)}"
+            data-student="${esc(filter)}">
+
+            <div class="filterbar">
+                ${historySelect(
+                    'historia-curso',
+                    'Curso',
+                    historyChoices(list, 'curso', 'nombreCurso'),
+                    selected.curso
+                )}
+
+                ${historySelect(
+                    'historia-persona',
+                    asTutor ? 'Estudiante' : 'Tutor o profesor',
+                    historyChoices(list, personId, personName),
+                    selected.persona
+                )}
+
+                <button
+                    type="button"
+                    class="secondary"
+                    id="limpiar-historial">
+                    Limpiar filtros
+                </button>
+            </div>
+
+            <div id="resultados-historial" aria-live="polite">
+                ${filteredHistory(list, selected, asTutor)}
+            </div>
+        </section>
+    `;
+};
+
+function filteredHistory(list, selected, asTutor) {
+    const matches = list.filter(x =>
+        (!selected.curso || x.request.curso === selected.curso)
+        && (
+            !selected.persona
+            || x.request[asTutor ? 'estudiante' : 'tutor'] === selected.persona
+        )
+    );
+
+    if (!matches.length && (selected.curso || selected.persona)) {
+        return empty(
+            'No hay coincidencias',
+            'Prueba otra combinación o usa Limpiar filtros. Tus filtros se conservan.'
+        );
+    }
+
+    return historyCards(matches);
+}
+
+function updateHistoryFilters(root, clear = false) {
+    if (!root) return;
+
+    const selected = historySelection(
+        root.dataset.historyScope,
+        root.dataset.student
+    );
+
+    const course = root.querySelector('#historia-curso');
+    const person = root.querySelector('#historia-persona');
+
+    if (clear) {
+        course.value = '';
+        person.value = '';
+    }
+
+    selected.curso = course.value;
+    selected.persona = person.value;
+
+    root.querySelector('#resultados-historial').innerHTML =
+        filteredHistory(
+            historySource(root.dataset.student),
+            selected,
+            state.usuario.rol === 'tutor'
+        );
+}
+
+function historyCards(list) {
+    if (!list.length) {
+        return empty(
+            'Tu historial empieza aquí',
+            'Las tutorías aparecerán después de que el tutor registre '
+                + 'el seguimiento y finalice la sesión.'
+        );
+    }
+
+    return `
+        <div class="grid">
+            ${list.map(({ session: s, request: r }) => `
+                <article class="card history-card">
+                    <div class="card-top">
+                        <span class="course-code">
+                            ${esc(r.curso)} · Sesión ${s.id}
+                        </span>
+                        ${badge('FINALIZADA')}
+                    </div>
+
+                    <h3>${esc(r.nombreCurso)}</h3>
+
+                    <p class="muted small">
+                        ${esc(r.nombreEstudiante)} con ${esc(r.nombreTutor)}
+                    </p>
+
+                    <div class="meta">
+                        <span>${date(r.fecha)}</span>
+                        <span>${s.duracion} horas</span>
+                        <span>${money(r.precio)}</span>
+                    </div>
+
+                    <div class="detail">
+                        <h4>Temas vistos</h4>
+                        <p>${esc(s.temas)}</p>
+
+                        <h4>Notas del tutor</h4>
+                        <p>${esc(s.notas)}</p>
+
+                        <h4>Para tu próxima tutoría</h4>
+                        <p>${esc(
+                            s.proximo || 'No se indicó un próximo tema.'
+                        )}</p>
+                    </div>
+                </article>
+            `).join('')}
+        </div>
+    `;
+}
+
+// Formularios académicos.
+
+function academicFields(t = {}) {
+    const known = new Map([
+        ...state.cursos,
+        ...(state.cursosEliminados || []),
+        ...(t.cursados || [])
+    ].map(c => [c.codigo, c]));
+
+    const completed = new Set(
+        (t.cursados || []).map(c => c.codigo)
+    );
+
+    return field(
+        'carrera',
+        t.profesor ? 'Área académica o especialidad' : 'Carrera',
+        'text',
+        t.carrera || '',
+        'maxlength="200"'
+    ).replace(' required', '') + `
+        ${t.profesor ? `
+            <div class="field">
+                <label for="formacion">Formación académica</label>
+                <textarea
+                    id="formacion"
+                    name="formacion"
+                    maxlength="2000">${esc(t.formacion || '')}</textarea>
+            </div>
+        ` : ''}
+
+        <div class="field">
+            <label for="descripcion">Descripción del perfil</label>
+            <textarea
+                id="descripcion"
+                name="descripcion"
+                maxlength="2000">${esc(t.descripcion || '')}</textarea>
+        </div>
+
+        <fieldset class="academic-courses">
+            <legend>Cursos cursados (información académica)</legend>
+
+            <p class="muted small">
+                Estos cursos no autorizan para impartir tutorías.
+                Coordinación debe aprobar cada curso por separado.
+            </p>
+
+            <div class="completed-course-list">
+                ${[...known.values()].map(c => `
+                    <label class="check-label">
+                        <input
+                            type="checkbox"
+                            data-cursado
+                            value="${esc(c.codigo)}"
+                            ${completed.has(c.codigo) ? 'checked' : ''}>
+                        ${esc(c.nombre)} · ${esc(c.codigo)}
+                    </label>
+                `).join('') || '<p>No hay cursos registrados.</p>'}
+            </div>
+
+            <input
+                type="hidden"
+                name="cursados"
+                value="${esc([...completed].join(','))}">
+        </fieldset>
+    `;
+}
+
+function ownProfile() {
+    const tutor = currentTutor();
+
+    if (!tutor || tutor.activo === false) {
+        return empty(
+            'Perfil no disponible',
+            'Consulta a coordinación.'
+        );
+    }
+
+    return heading(
+        'Mi perfil académico',
+        'Actualiza tu presentación. La autorización de cursos '
+            + 'y la compensación las administra coordinación.'
+    ) + `
+        <section class="card form-panel">
+            ${form(
+                'perfil-academico',
+                academicFields(tutor),
+                'Guardar perfil'
+            )}
+        </section>
+    `;
+}
+
+// Búsqueda combinada de perfiles.
+
+function publicProfileUrl(t, course = '') {
+    return '#perfil?tutor=' + encodeURIComponent(t.carnet)
+        + (course ? '&curso=' + encodeURIComponent(course) : '');
+}
+
+function searchableProfiles() {
+    return state.tutores.filter(t =>
+        t.activo !== false && t.aprobado
+    );
+}
+
+function matchingProfiles(
+    name = profileSearch.nombre,
+    course = profileSearch.curso
+) {
+    const query = normalizeSearch(name);
+
+    return searchableProfiles().filter(t =>
+        normalizeSearch(t.nombre).includes(query)
+        && (!course || t.cursos.includes(course))
+    );
+}
+
+function profileCards(list) {
+    if (!list.length) {
+        return empty(
+            'No encontramos perfiles',
+            'Prueba otro nombre o curso, o limpia la búsqueda.'
+        );
+    }
+
+    return `
+        <div class="grid">
+            ${list.map(t => `
+                <article class="card">
+                    <div class="card-top">
+                        <h3>${esc(t.nombre)}</h3>
+                        <span class="badge">
+                            ${t.profesor ? 'Profesor' : 'Tutor estudiante'}
+                        </span>
+                    </div>
+
+                    <p class="small">${esc(
+                        t.profesor
+                            ? t.formacion || 'Formación académica sin registrar'
+                            : (t.carrera || 'Carrera sin registrar')
+                                + ' · Año ' + t.anio
+                    )}</p>
+
+                    <p>${t.beca
+                        ? 'Horas beca · sin costo'
+                        : money(t.tarifa) + ' por hora'
+                    }</p>
+
+                    <p class="muted small">${t.horarios.some(h => h.disponible)
+                        ? 'Con horarios disponibles'
+                        : 'Sin horarios disponibles'
+                    }</p>
+
+                    ${link(
+                        publicProfileUrl(t, profileSearch.curso),
+                        'Ver perfil',
+                        'button secondary'
+                    )}
+                </article>
+            `).join('')}
+        </div>
+    `;
+}
+
+function profileSearchView() {
+    return `
+        <section aria-label="Búsqueda de perfiles">
+            <h2>Busca tutores y profesores</h2>
+
+            <div class="filterbar">
+                <div class="field">
+                    <label for="buscar-perfil">
+                        Nombre del tutor o profesor
+                    </label>
+                    <input
+                        id="buscar-perfil"
+                        type="search"
+                        value="${esc(profileSearch.nombre)}"
+                        placeholder="Nombre completo o parcial">
+                </div>
+
+                <div class="field">
+                    <label for="perfil-curso">Curso autorizado</label>
+                    <select id="perfil-curso">
+                        <option value="">Todos los cursos</option>
+                        ${state.cursos.map(c => `
+                            <option
+                                value="${esc(c.codigo)}"
+                                ${profileSearch.curso === c.codigo
+                                    ? 'selected' : ''}>
+                                ${esc(c.nombre)} · ${esc(c.codigo)}
+                            </option>
+                        `).join('')}
+                    </select>
+                </div>
+
+                <button
+                    type="button"
+                    class="secondary"
+                    id="limpiar-perfiles">
+                    Limpiar búsqueda
+                </button>
+            </div>
+
+            <div id="lista-perfiles" aria-live="polite">
+                ${profileCards(matchingProfiles())}
+            </div>
+        </section>
+    `;
+}
+
+function updateProfileSearch(clear = false) {
+    const name = document.querySelector('#buscar-perfil');
+    const course = document.querySelector('#perfil-curso');
+
+    if (!name || !course) return;
+
+    if (clear) {
+        name.value = '';
+        course.value = '';
+    }
+
+    profileSearch.nombre = name.value;
+    profileSearch.curso = course.value;
+
+    document.querySelector('#lista-perfiles').innerHTML =
+        profileCards(matchingProfiles());
+}
+
+function profile(q) {
+    const tutor = state.tutores.find(t =>
+        t.carnet === q.get('tutor') && t.activo !== false
+    );
+
+    const coordinator = state.usuario.rol === 'coordinador';
+
+    if (!tutor) {
+        return heading(
+            'Perfil no disponible',
+            'Este perfil no forma parte de la oferta actual.',
+            link(
+                coordinator ? '#tutores' : '#buscar',
+                coordinator ? 'Volver a tutores' : 'Volver a búsqueda',
+                'button secondary'
+            )
+        );
+    }
+
+    const authorized = state.cursos.filter(c =>
+        tutor.cursos.includes(c.codigo)
+    );
+
+    const hours = tutor.horarios.filter(h => h.disponible);
+    const requested = q.get('curso');
+
+    const selected = authorized.filter(c =>
+        !requested || c.codigo === requested
+    );
+
+    const canBook = state.usuario.rol === 'estudiante'
+        && tutor.aprobado
+        && hours.length
+        && selected.length;
+
+    const back = coordinator
+        ? '#tutores'
+        : requested
+            ? '#reservar?curso=' + encodeURIComponent(requested)
+                + '&tutor=' + encodeURIComponent(tutor.carnet)
+            : '#buscar';
+
+    const backLabel = coordinator
+        ? 'Volver a tutores'
+        : requested ? 'Volver a la reserva' : 'Volver a búsqueda';
+
+    return heading(
+        esc(tutor.nombre),
+        tutor.profesor ? 'Perfil del profesor' : 'Perfil del tutor estudiante',
+        link(back, backLabel, 'button secondary')
+    ) + `
+        <div class="grid">
+            <section class="card">
+                <h2>Perfil académico</h2>
+
+                <dl>
+                    <dt>${tutor.profesor ? 'Área académica' : 'Carrera'}</dt>
+                    <dd>${esc(tutor.carrera || 'Sin registrar')}</dd>
+
+                    ${tutor.profesor ? `
+                        <dt>Formación académica</dt>
+                        <dd class="profile-text">
+                            ${esc(tutor.formacion || 'Sin registrar')}
+                        </dd>
+                    ` : `
+                        <dt>Año de carrera</dt>
+                        <dd>${esc(tutor.anio)}</dd>
+                    `}
+
+                    <dt>Descripción</dt>
+                    <dd class="profile-text">${esc(
+                        tutor.descripcion || 'Sin descripción registrada'
+                    )}</dd>
+
+                    <dt>Compensación</dt>
+                    <dd>${tutor.beca
+                        ? 'Horas beca · tutorías sin costo'
+                        : money(tutor.tarifa) + ' por hora'
+                    }</dd>
+                </dl>
+
+                <h3>Cursos cursados</h3>
+
+                <p>${esc(
+                    (tutor.cursados || [])
+                        .map(c => c.nombre + ' · ' + c.codigo)
+                        .join(', ') || 'Sin registrar'
+                )}</p>
+
+                <p class="muted small">
+                    Los cursos cursados describen su formación.
+                    La autorización para enseñar se consulta por separado.
+                </p>
+
+                <h3>Cursos autorizados por coordinación</h3>
+
+                <p>${esc(
+                    authorized
+                        .map(c => c.nombre + ' · ' + c.codigo)
+                        .join(', ') || 'Ninguno todavía'
+                )}</p>
+            </section>
+
+            <section class="card">
+                <h2>Disponibilidad</h2>
+
+                ${hours.length ? `
+                    <ul>
+                        ${hours.map(h => `
+                            <li>
+                                ${date(h.fecha)} ·
+                                ${esc(h.inicio)}–${esc(h.fin)}
+                            </li>
+                        `).join('')}
+                    </ul>
+                ` : '<p role="status">Sin horarios disponibles</p>'}
+
+                ${canBook
+                    ? selected.map(c => link(
+                        '#reservar?curso=' + encodeURIComponent(c.codigo)
+                            + '&tutor=' + encodeURIComponent(tutor.carnet),
+                        'Reservar ' + esc(c.nombre),
+                        'button secondary'
+                    )).join(' ')
+                    : !selected.length
+                        ? '<p>No tiene autorización para el curso seleccionado.</p>'
+                        : ''
+                }
+            </section>
+        </div>
+    `;
+}
+
+// Actualizar los cursos marcados antes de enviar el formulario.
+
+document.addEventListener('submit', e => {
+    const f = e.target;
+
+    if (!(f instanceof HTMLFormElement)) return;
+
+    const completed = f.querySelector('[name="cursados"]');
+
+    if (completed) {
+        completed.value = [...f.querySelectorAll('[data-cursado]:checked')]
+            .map(el => el.value)
+            .join(',');
+    }
+}, true);
+
+document.addEventListener('change', e => {
+    const el = e.target;
+
+    if (el.id === 'historia-curso' || el.id === 'historia-persona') {
+        updateHistoryFilters(el.closest('[data-history-scope]'));
+    }
+
+    if (el.id === 'perfil-curso') {
+        updateProfileSearch();
+    }
+
+    if (el.id === 'progreso-estudiante') {
+        document.querySelector('#lista-progreso').innerHTML =
+            history(el.value, 'progreso');
+    }
+});
+
+document.addEventListener('input', e => {
+    if (e.target.id === 'buscar-perfil') {
+        updateProfileSearch();
+    }
+
+    if (e.target.id === 'buscar-curso') {
+        const query = normalizeSearch(e.target.value);
+
+        const courses = state.cursos.filter(c =>
+            normalizeSearch(c.nombre + ' ' + c.codigo).includes(query)
+        );
+
+        document.querySelector('#lista-cursos').innerHTML = courses.length
+            ? courseCards(courses)
+            : empty(
+                'No encontramos ese curso',
+                'Prueba otra palabra o el código del curso.'
+            );
+    }
+});
+
+document.addEventListener('click', e => {
+    const btn = e.target.closest('button');
+    if (!btn) return;
+
+    if (btn.id === 'limpiar-historial') {
+        updateHistoryFilters(
+            btn.closest('[data-history-scope]'),
+            true
+        );
+    }
+
+    if (btn.id === 'limpiar-perfiles') {
+        updateProfileSearch(true);
+    }
+});
+
 init();

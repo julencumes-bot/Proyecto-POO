@@ -208,3 +208,43 @@ dialog{border:3px solid var(--ink);border-top:7px solid var(--lime);border-radiu
 .demand-topics li>span:first-child{min-width:0;white-space:pre-wrap;overflow-wrap:anywhere}
 .demand-topics .badge{flex-shrink:0}
 .demand-table tfoot th,.demand-table tfoot td{border-top:2px solid var(--line);border-bottom:0;background:#eaf2de;color:var(--green2)}
+/* Filtros y perfiles académicos — Caleb */
+
+.academic-courses {
+    border: 1px solid #d9ded8;
+    border-radius: 12px;
+    padding: 1rem;
+    margin: 1rem 0;
+}
+
+.completed-course-list {
+    display: grid;
+    gap: 0.6rem;
+    max-height: 240px;
+    overflow: auto;
+}
+
+.profile-text {
+    white-space: pre-line;
+    overflow-wrap: anywhere;
+}
+
+#perfiles-reserva {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin: 0.8rem 0;
+}
+
+#lista-perfiles {
+    margin-bottom: 2rem;
+}
+
+[data-history-scope] .filterbar {
+    align-items: end;
+    flex-wrap: wrap;
+}
+
+[data-history-scope] .filterbar button {
+    margin-bottom: 1rem;
+}

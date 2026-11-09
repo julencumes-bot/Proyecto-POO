@@ -7,7 +7,7 @@ const path=require('node:path');
 const source=fs.readFileSync(path.join(__dirname,'../../web/app.js'),'utf8');
 function interfaz(rol='estudiante',carnet='E1'){
  const nodes=new Map(),events={};
- const document={querySelector(id){if(!nodes.has(id))nodes.set(id,{value:'',textContent:'',innerHTML:'',showModal(){this.open=true;},close(){this.open=false;}});return nodes.get(id);},addEventListener(name,callback){events[name]=callback;}};
+ const document={querySelector(id){if(!nodes.has(id))nodes.set(id,{value:'',textContent:'',innerHTML:'',showModal(){this.open=true;},close(){this.open=false;}});return nodes.get(id);},addEventListener(name,callback){const previous=events[name];events[name]=previous?async e=>{await previous(e);await callback(e);}:callback;}};
  const context=vm.createContext({document,window:{addEventListener(){}}});
  vm.runInContext(source.replace(/\ninit\(\);\s*$/,'\n')+'\nglobalThis.ui={booking,requestCard,updateSummary};',context);
  context.fixture={usuario:{rol,carnet},cursos:[{codigo:'C1',nombre:'POO'}],tutores:[{carnet:'T1',nombre:'María',tarifa:40,beca:false,cursos:['C1'],horarios:[{id:'H1',fecha:'2026-12-01',inicio:'10:00',fin:'11:30',duracion:1.5,disponible:true}]}],preguntas:[],sesiones:[],solicitudes:[]};
